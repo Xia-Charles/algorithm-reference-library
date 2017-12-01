@@ -2,7 +2,7 @@
 Algorithm Reference Library
 ===========================
 
-This is a project to create a reference code in NumPy for aperture synthesis imaging.
+This is my forked version of the [algorithm-reference-library](https://github.com/SKA-ScienceDataProcessor/algorithm-reference-library). This project is not just to create a reference code for aperture synthesis imaging but also to explore new ideas for SKA and it's precursors.
 
 Motivation
 ----------
