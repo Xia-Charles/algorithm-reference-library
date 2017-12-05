@@ -12,8 +12,16 @@ import logging
 
 import numpy
 
-log = logging.getLogger(__name__)
+from matplotlib import pyplot as plt;
+from matplotlib.collections import LineCollection;
 
+from astropy import units as units;
+
+from arl.data.data_models import Visibility, BlockVisibility;
+from arl.data.parameters import get_parameter;
+from arl.data.polarisation import PolarisationFrame;
+
+log = logging.getLogger(__name__)
 
 def coordinateBounds(npixel):
     r""" Returns lowest and highest coordinates of an image/grid given:
@@ -465,3 +473,107 @@ def gridder_numba(uvgrid, vis, xs, ys, kernel=numpy.ones((1, 1)), kernel_ixs=Non
         uvgrid[y:y + gh, x:x + gw] += kernel[convert_to_tuple3(kern_ix)] * v
         
     return uvgrid
+
+def create_grid_on_uv_plane(vis, padding=2, **kwargs):
+    """
+    Returns the grid point positions on the uv plane (uniform grid) -> each grid point will be a pixel in the image domain.
+    
+    :param vis:
+    :param phasecentre: Phasecentre (Skycoord)
+    :param channel_bandwidth: Channel width (Hz)
+    :param cellsize: Cellsize (radians)
+    :param npixel: Number of pixels on each axis (512)
+    :param frame: Coordinate frame for WCS (ICRS)
+    :param equinox: Equinox for WCS (2000.0)
+    :param nchan: Number of image channels (Default is 1 -> MFS)
+    :return: grid points
+    """
+    
+    assert isinstance(vis, Visibility) or isinstance(vis, BlockVisibility), "vis is not a Visibility or a BlockVisibility: %r" % (vis);
+    
+    log.info("create_grid_on_uv_plane: Parsing parameters to get the grid points on uv plane");
+    
+    ### Get position and polatization info ###
+    imagecentre = get_parameter(kwargs, "imagecentre", vis.phasecentre);
+    phasecentre = get_parameter(kwargs, "phasecentre", vis.phasecentre);
+    pol_frame = get_parameter(kwargs, "polarisation_frame", PolarisationFrame("stokesI"));
+    inpol = pol_frame.npol;
+    
+    ### Spectral processing options ###
+    ufrequency = numpy.unique(vis.frequency);
+    vnchan = len(ufrequency); #number of channels
+    
+    frequency = get_parameter(kwargs, "frequency", vis.frequency); #frequency used for gridding
+    inchan = get_parameter(kwargs, "nchan", vnchan);#channel number from visibility
+    reffrequency = frequency[0] * units.Hz; #reference frequency -> first frequency in the cube
+    channel_bandwidth = get_parameter(kwargs, "channel_bandwidth", vis.channel_bandwidth[0]) * units.Hz;
+    
+    if (inchan == vnchan) and vnchan > 1:
+        log.info("create_grid_on_uv_plane: Defining %d channel grid at %s, starting frequency %s, and bandwidth %s"
+            %(inchan, imagecentre, reffrequency, channel_bandwidth));
+    elif (inchan == 1) and vnchan > 1:
+        assert numpy.abs(channel_bandwidth.value) > 0.0, "Channel width must be non-zero for mfs mode";
+        log.info("create_grid_on_uv_plane: Defining single channel Muv grid at %s, starting frequency %s, "
+                 "and bandwidth %s" %(imagecentre, reffrequency, channel_bandwidth));
+    elif inchan > 1 and vnchan > 1:
+        assert numpy.abs(channel_bandwidth.value) > 0.0, "Channel width must be non-zero for mfs mode";
+        log.info("create_grid_on_uv_plane: Defining multi-channel grids at %s, starting frequency %s, "
+                 "and bandwidth %s" %(imagecentre, reffrequency, channel_bandwidth));
+    elif (inchan == 1) and (vnchan == 1):
+        assert numpy.abs(channel_bandwidth.value) > 0.0, "Channel width must be non-zero for mfs mode";
+        log.info("create_grid_on_uv_plane: Defining single channel grid at %s, starting frequency %s, "
+                 "and bandwidth %s" %(imagecentre, reffrequency, channel_bandwidth));
+    else:
+        raise ValueError("create_image_from_visibility: unknown spectral mode ");
+    
+    ### Compute image sampling -> grid sampling options (e.g critical cellsize) ###
+    npixel = get_parameter(kwargs, "npixel", 512);
+    uvmax = numpy.max((numpy.abs(vis.data['uvw'][:, 0:1])));
+    if isinstance(vis, BlockVisibility):#Check if visibility is Blockvisibility
+        uvmax *= numpy.max(frequency) / constants.c.to('m/s').value;
+    log.info("create_grid_on_uv_plane: uvmax = %f wavelengths" % uvmax);
+    
+    criticalcellsize = 1.0 / (uvmax * 2.0);
+    log.info("create_grid_on_uv_plane: Critical cellsize = %f radians, %f degrees" % (criticalcellsize, criticalcellsize * 180.0 / numpy.pi));
+    
+    cellsize = get_parameter(kwargs, "cellsize", 0.5 * criticalcellsize);
+    log.info("create_grid_on_uv_plane: Cellsize          = %f radians, %f degrees" % (cellsize, cellsize * 180.0 / numpy.pi));
+
+    override_cellsize = get_parameter(kwargs, "override_cellsize", True);
+    #if override_cellsize and cellsize > criticalcellsize:
+        #log.info("create_grid_on_uv_plane: Resetting cellsize %f radians to criticalcellsize %f radians" % (cellsize, criticalcellsize));
+        #cellsize = criticalcellsize;
+    
+    ### Compute grid points on uv-plane ###
+    uv_grid_cellsize = 1.0/(npixel*cellsize);#cellsize on the uv grid one gridpoint is always on the origo
+    log.info("create_grid_on_uv_plane: Cellsize on uv plane %f wavelenghts." % (uv_grid_cellsize));
+    
+    uv_grid_edge=uv_grid_cellsize*npixel/(2.*padding);
+    log.info("create_grid_on_uv_plane: Grid on uv plane %fx%f wavelenghts, thus going from %f to %f in both directions" % (uv_grid_edge*2.0,uv_grid_edge*2.0,-uv_grid_edge,uv_grid_edge));    
+    
+    uv_gridpoint_edge_list = numpy.linspace(-uv_grid_edge,uv_grid_edge,npixel+1);#the coordinates (in wavelenght) of the edges of the grid cells
+    
+    uv_gridpoint_list = numpy.linspace(-uv_grid_edge + uv_grid_cellsize/2,uv_grid_edge - uv_grid_cellsize/2, npixel);#the coordinates (in wavelenght) of the center of the grid cells
+    
+    #**********************************************#
+    #** Need to modify for multiple frequencies! **#
+    #**********************************************#
+    
+    return uv_gridpoint_list, uv_gridpoint_edge_list;
+
+def plot_grid(uvgridpoint_edge_list):
+    """
+    Define the grid for the visualization and add to the plot.
+    """
+    
+    hlines = numpy.column_stack(numpy.broadcast_arrays(uvgridpoint_edge_list[0], uvgridpoint_edge_list, uvgridpoint_edge_list[-1], uvgridpoint_edge_list));
+    vlines = numpy.column_stack(numpy.broadcast_arrays(uvgridpoint_edge_list, uvgridpoint_edge_list[0], uvgridpoint_edge_list, uvgridpoint_edge_list[-1]));
+    lines = numpy.concatenate([hlines, vlines]).reshape(-1, 2, 2);
+    line_collection = LineCollection(lines, color="black", linewidths=1,zorder=2);
+
+    ax = plt.gca();
+    ax.add_collection(line_collection);
+
+    #**********************************************#
+    #** Need to modify for multiple frequencies! **#
+    #**********************************************#
