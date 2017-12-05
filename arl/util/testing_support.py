@@ -91,6 +91,39 @@ def create_configuration_from_file(antfile: str, name: str = None, location: Ear
                        diameter=diameter)
     return fc
 
+def create_ASKAP_first_N_anetnna_configuration(N = 36,frame: str = 'local',diameter=12.0,rmax=None, names: str = "%d", mount: str = 'altaz'):
+    """
+    Create an antenna configuration form VLA using N antenas -> N=2 is an one baseline configuration
+    
+    :param N: Number of antennas used
+    :param frame: 'local' | 'global'
+    :param diameter: Effective diameter of station or antenna
+    :param names: Anetnna names
+    :param mount: mount type: 'altaz', 'xy'
+    """
+    location = EarthLocation(lon="116.637", lat="-26.696", height=2124.0);#ASKAP location (???) -> I used wikipedia
+    
+    antfile=arl_path("data/configurations/ASKAP.csv");
+    
+    antxyz = numpy.genfromtxt(antfile, delimiter=",")[0:N,:];#Select first two antenna
+    assert antxyz.shape[1] == 3, ("Antenna array has wrong shape %s" % antxyz.shape);
+    if frame == 'local':
+        latitude = location.geodetic[1].to(u.rad).value;
+        antxyz = xyz_at_latitude(antxyz, latitude);
+    if rmax is not None:
+        lantxyz = antxyz - numpy.average(antxyz, axis=0);
+        r = numpy.sqrt(lantxyz[:, 0] ** 2 + lantxyz[:, 1] ** 2 + lantxyz[:, 2] ** 2);
+        antxyz = antxyz[r < rmax];
+        log.debug('create_VLAA_N_first_anetnna_configuration: Maximum radius %.1f m includes %d antennas/stations' %
+                  (rmax, antxyz.shape[0]));
+     
+    nants = antxyz.shape[0];
+    anames = [names % ant for ant in range(nants)];
+    mounts = numpy.repeat(mount, nants);
+    fc = Configuration(location=location, names=anames, mount=mounts, xyz=antxyz, frame=frame,
+                       diameter=diameter);
+    
+    return fc;
 
 def create_LOFAR_configuration(antfile: str, meta: dict = None) -> Configuration:
     """ Define from the LOFAR configuration file
