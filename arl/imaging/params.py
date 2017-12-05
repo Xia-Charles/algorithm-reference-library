@@ -238,6 +238,47 @@ def get_kernel_list(vis: Visibility, im: Image, **kwargs):
     
     return kernelname, gcf, kernel_list
 
+def advise_imaging_parameters(vis,oversampling_synthesised_beam=4,guard_band_image=6):
+    """
+    Calculate the bascic informations of the observation based on the visibility distribution.
+    
+    :param vis: Visibility distribution
+    :param oversampling_synthesised_beam: Oversampling of the synthesized beam (def: 3.0)
+    :param guard_band_image: Number of primary beam half-widths-to-half-maximum to image (def: 6)
+    """
+    max_wavelength = constants.c.to('m/s').value / numpy.min(vis.frequency);
+    log.info("advise_imaging_parameters: Maximum wavelength: %.3f (meters)" 
+             %(max_wavelength));
+
+    min_wavelength = constants.c.to('m/s').value / numpy.max(vis.frequency);
+    log.info("advise_imaging_parameters: Minimum wavelength: %.3f (meters)" 
+             %(min_wavelength));
+
+    maximum_baseline = numpy.max(numpy.abs(vis.uvw));  #Maximum baseline in wavelengths
+    if isinstance(vis, BlockVisibility):
+        maximum_baseline = maximum_baseline / min_wavelength;
+    log.info("advise_imaging_parameters: Maximum baseline: %.1f (wavelengths)" 
+             %(maximum_baseline));
+    
+    diameter = numpy.min(vis.configuration.diameter);
+    log.info("advise_imaging_parameters: Station/antenna diameter: %.1f (meters)" 
+             %(diameter));
+
+    primary_beam_fov = max_wavelength / diameter;
+    log.info("advise_imaging_parameters: Primary beam: %s" 
+             %(rad_and_deg(primary_beam_fov)));
+
+    image_fov = primary_beam_fov * guard_band_image;
+    log.info("advise_imaging_parameters: Image field of view (with guard band = %s): %s" 
+             %(guard_band_image,rad_and_deg(image_fov)));
+
+    synthesized_beam = 1.0 / (maximum_baseline);
+    log.info("advise_imaging_parameters: Synthesized beam: %s" 
+             %(rad_and_deg(synthesized_beam)));
+
+    cellsize = synthesized_beam / oversampling_synthesised_beam;
+    log.info("advise_imaging_parameters: Cellsize (with oversampling = %s): %s" 
+             %(oversampling_synthesised_beam, rad_and_deg(cellsize)));
 
 def advise_wide_field(vis: Visibility, delA=0.02, oversampling_synthesised_beam=3.0, guard_band_image=6.0, facets=1,
                       wprojection_planes=1):
