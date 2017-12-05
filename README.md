@@ -20,6 +20,15 @@ optimisations.
 
 The actual executable code may be accessed directly from the documentation.
 
+Gridwise features
+----------
+
+In my version some functions are modified to *gridwise* and some other functions are introduced. The purpose of gridwise functions to work with the gridded visibility in the UV domain. Thus gridwise options and methods allows the user to stop the imaging at the phase of the gridding and if requred continue the imaging from that point. Note that I have not tested all type of imaging and even I droped some arl features. The current status of gridwise functions are the following:
+
+- The feature of padding is compatible with the gridwise functions. (but!) As my current understandng padding is only densens the grid on the uv-space and works with the middle part it is seems useless now as with the gridwise functions working with the real grids corresponding to the image (no padding) is essential. Note that padding could be a float. The useness of padding and the possible integration to gridwise functions need to be exploore in the future.
+- Gridwise functions are working with more than one polarization and this feature was tested at the beginning.
+- Gridwise functions are compatible with more than one channel (spectral cube) visibilities IN THEORY. This feature was not tested, thus I do not reccoment to try the gridwise features using BlockVisibilities (the spectral cube channel class in arl).
+
 Installing
 ----------
 
