@@ -8,6 +8,7 @@ import numpy
 import copy
 import warnings
 
+from astropy import units;
 from astropy.io import fits
 from astropy.coordinates import SkyCoord
 from astropy.wcs import WCS
@@ -26,7 +27,36 @@ from arl.data.parameters import get_parameter
 
 log = logging.getLogger(__name__)
 
+def create_world_coordinate_system_for_image_cube(phasecentre, frequency, channel_bandwidth, cellsize, npixel):
+    """ Create World Coordinate System for empty images that are required for imaging output of degridding.
 
+    :param phasecentre: phasecentre of the image
+    :param frequency: frequency of observation
+    :param channel_bandwidth: the bandwith of the channel
+    :param cellsize: cellsize of image in radians
+    :param npixel: nuber of pixels (only for equal edge pixels yet)
+    :return: World coordinate system
+
+    """
+
+    w = WCS(naxis=4);
+
+    reffrequency = frequency * units.Hz;
+
+    # The negation in the longitude is needed by definition of RA, DEC
+    w.wcs.cdelt = [-cellsize * 180.0 / numpy.pi, cellsize * 180.0 / numpy.pi, 1.0, (channel_bandwidth * units.Hz).to(units.Hz).value];
+    # The numpy definition of the phase centre of an FFT is n // 2 (0 - rel) so that's what we use for
+    # the reference pixel. We have to use 0 rel everywhere.
+    w.wcs.crpix = [npixel // 2, npixel // 2, 1.0, 1.0];
+    w.wcs.ctype = ["RA---SIN", "DEC--SIN", 'STOKES', 'FREQ'];
+    w.wcs.crval = [phasecentre.ra.deg, phasecentre.dec.deg, 1.0, reffrequency.to(units.Hz).value];
+    w.naxis = 4;
+
+    w.wcs.radesys = 'ICRS';
+    w.wcs.equinox = 2000.0;
+
+    return w;
+    
 def image_sizeof(im: Image):
     """ Return size in GB
     """

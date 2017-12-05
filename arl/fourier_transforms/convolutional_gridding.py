@@ -259,7 +259,6 @@ def convolutional_degrid(kernel_list, vshape, uvgrid, vuvwmap, vfrequencymap, vp
             
     return numpy.array(vis)
 
-
 def convolutional_grid(kernel_list, uvgrid, vis, visweights, vuvwmap, vfrequencymap, vpolarisationmap=None):
     """Grid after convolving with frequency and polarisation independent gcf
 
@@ -272,47 +271,48 @@ def convolutional_grid(kernel_list, uvgrid, vis, visweights, vuvwmap, vfrequency
     :param vuvwmap: map uvw to grid fractions
     :param vfrequencymap: map frequency to image channels
     :param vpolarisationmap: map polarisation to image polarisation
-    :return: uv grid[nchan, npol, ny, nx], sumwt[nchan, npol]
+    :return: uv grid[nchan, npol, ny, nx], sumwt[nchan, npol] -> ny & nx is the twice of the grid size
     """
     
-    kernel_indices, kernels = kernel_list
-    kernel_oversampling, _, gh, gw = kernels[0].shape
-    assert gh % 2 == 0, "Convolution kernel must have even number of pixels"
-    assert gw % 2 == 0, "Convolution kernel must have even number of pixels"
-    inchan, inpol, ny, nx = uvgrid.shape
+    kernel_indices, kernels = kernel_list;
+    kernel_oversampling, _, gh, gw = kernels[0].shape;
+    assert gh % 2 == 0, "Convolution kernel must have even number of pixels";
+    assert gw % 2 == 0, "Convolution kernel must have even number of pixels";
+    inchan, inpol, ny, nx = uvgrid.shape;
     
     # Construct output grids (in uv space)
-    sumwt = numpy.zeros([inchan, inpol])
+    sumwt = numpy.zeros([inchan, inpol]);
     
     # uvw -> fraction of grid mapping
-    y, yf = frac_coord(ny, kernel_oversampling, vuvwmap[:, 1])
-    y -= gh // 2
-    x, xf = frac_coord(nx, kernel_oversampling, vuvwmap[:, 0])
-    x -= gw // 2
+    y, yf = frac_coord(ny, kernel_oversampling, vuvwmap[:, 1]);#list of y whole parts of coordinates rounded to kernel_oversampling-th fraction of pixel size (???) 
+    y -= gh // 2;
+    
+    x, xf = frac_coord(nx, kernel_oversampling, vuvwmap[:, 0]);
+    x -= gw // 2;
     
     # About 228k samples per second for standard kernel so about 10 million CMACs per second
     
     # Now we can loop over all rows
-    wts = visweights[...]
-    viswt = vis[...] * visweights[...]
-    npol = vis.shape[-1]
+    wts = visweights[...];
+    viswt = vis[...] * visweights[...];
+    npol = vis.shape[-1];
 
     if len(kernels) > 1:
-        coords = kernel_indices, list(vfrequencymap), x, y, xf, yf
+        coords = kernel_indices, list(vfrequencymap), x, y, xf, yf;
         for pol in range(npol):
-            for v, vwt, kind, chan, xx, yy, xxf, yyf in zip(viswt[..., pol], wts[..., pol], *coords):
-                uvgrid[chan, pol, yy: yy + gh, xx: xx + gw] += kernels[kind][yyf, xxf, :, :] * v
-                sumwt[chan, pol] += vwt
+            for v, vwt, kind, chan, xx, yy, xxf, yyf in zip(viswt[..., pol], wts[..., pol], *coords): #one for loop trough all visibilities
+                uvgrid[chan, pol, yy: yy + gh, xx: xx + gw] += kernels[kind][yyf, xxf, :, :] * v;
+                sumwt[chan, pol] += vwt;#Stores the visibility weights only
     else:
-        kernel0 = kernels[0]
-        coords = list(vfrequencymap), x, y, xf, yf
+        kernel0 = kernels[0];
+        coords = list(vfrequencymap), x, y, xf, yf;
         for pol in range(npol):
             for v, vwt, chan, xx, yy, xxf, yyf in zip(viswt[..., pol], wts[..., pol], *coords):
-                uvgrid[chan, pol, yy: yy + gh, xx: xx + gw] += kernel0[yyf, xxf, :, :] * v
-                sumwt[chan, pol] += vwt
-
-    return uvgrid, sumwt
-
+                #print(v, vwt, chan, xx, yy, xxf, yyf);
+                uvgrid[chan, pol, yy: yy + gh, xx: xx + gw] += kernel0[yyf, xxf, :, :] * v;
+                sumwt[chan, pol] += vwt;#Stores the visibility weights only
+    
+    return uvgrid, sumwt;
 
 def weight_gridding(shape, visweights, vuvwmap, vfrequencymap, vpolarisationmap=None, weighting='uniform'):
     """Reweight data using one of a number of algorithms

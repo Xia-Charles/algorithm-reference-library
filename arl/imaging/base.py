@@ -40,6 +40,7 @@ from arl.imaging.params import get_frequency_map, get_polarisation_map, get_uvw_
 from arl.util.coordinate_support import simulate_point, skycoord_to_lmn
 from arl.visibility.base import copy_visibility, phaserotate_visibility
 from arl.visibility.coalesce import coalesce_visibility, decoalesce_visibility
+from arl.fourier_transforms.convolutional_gridding import grdsf;
 
 log = logging.getLogger(__name__)
 
@@ -146,9 +147,7 @@ def predict_2d(vis: Visibility, im: Image, **kwargs) -> Visibility:
     log.debug("predict_2d: predict using 2d transform")
     return predict_2d_base(vis, im, **kwargs)
 
-
-def invert_2d_base(vis: Visibility, im: Image, dopsf: bool = False, normalize: bool = True, **kwargs) \
-        -> (Image, numpy.ndarray):
+def invert_2d_base(vis: Visibility, im: Image, dopsf: bool = False, normalize: bool = True, gridwise: bool = True, **kwargs) -> (Image, numpy.ndarray):
     """ Invert using 2D convolution function, including w projection optionally
 
     Use the image im as a template. Do PSF in a separate call.
@@ -164,57 +163,73 @@ def invert_2d_base(vis: Visibility, im: Image, dopsf: bool = False, normalize: b
 
     """
     if not isinstance(vis, Visibility):
-        svis = coalesce_visibility(vis, **kwargs)
+        svis = coalesce_visibility(vis, **kwargs);
     else:
-        svis = copy_visibility(vis)
+        svis = copy_visibility(vis);
 
     if dopsf:
-        svis.data['vis'] = numpy.ones_like(svis.data['vis'])
+        svis.data['vis'] = numpy.ones_like(svis.data['vis']);
 
-    svis = shift_vis_to_image(svis, im, tangent=True, inverse=False)
+    svis = shift_vis_to_image(svis, im, tangent=True, inverse=False);
     
-    nchan, npol, ny, nx = im.data.shape
+    nchan, npol, ny, nx = im.data.shape;
     
-    padding = {}
+    padding = {};
     if get_parameter(kwargs, "padding", False):
-        padding = {'padding': get_parameter(kwargs, "padding", False)}
-    spectral_mode, vfrequencymap = get_frequency_map(svis, im)
-    polarisation_mode, vpolarisationmap = get_polarisation_map(svis, im)
-    uvw_mode, shape, padding, vuvwmap = get_uvw_map(svis, im, **padding)
-    kernel_name, gcf, vkernellist = get_kernel_list(svis, im, **kwargs)
-    
+        padding = {'padding': get_parameter(kwargs, "padding", False)};
+    spectral_mode, vfrequencymap = get_frequency_map(svis, im);
+    polarisation_mode, vpolarisationmap = get_polarisation_map(svis, im);
+    uvw_mode, shape, padding, vuvwmap = get_uvw_map(svis, im, **padding);#vuvmmap is the list of visibility positions
+    kernel_name, gcf, vkernellist = get_kernel_list(svis, im, **kwargs);
+        
     # Optionally pad to control aliasing
-    imgridpad = numpy.zeros([nchan, npol, int(round(padding * ny)), int(round(padding * nx))], dtype='complex')
+    imgridpad = numpy.zeros([nchan, npol, int(round(padding * ny)), int(round(padding * nx))], dtype='complex');
+    
+    ### Create the grid ###
     imgridpad, sumwt = convolutional_grid(vkernellist, imgridpad, svis.data['vis'],
                                           svis.data['imaging_weight'],
                                           vuvwmap,
-                                          vfrequencymap, vpolarisationmap)
-    
+                                          vfrequencymap, vpolarisationmap);
+                                                      
     # Fourier transform the padded grid to image, multiply by the gridding correction
     # function, and extract the unpadded inner part.
     
     # Normalise weights for consistency with transform
-    sumwt /= float(padding * int(round(padding * nx)) * ny)
+    sumwt /= float(padding * int(round(padding * nx)) * ny);
     
-    imaginary = get_parameter(kwargs, "imaginary", False)
+    imaginary = get_parameter(kwargs, "imaginary", False);
     if imaginary:
-        log.debug("invert_2d_base: retaining imaginary part of dirty image")
-        result = extract_mid(ifft(imgridpad) * gcf, npixel=nx)
-        resultreal = create_image_from_array(result.real, im.wcs)
-        resultimag = create_image_from_array(result.imag, im.wcs)
+        log.debug("invert_2d_base: retaining imaginary part of dirty image");
+        result = extract_mid(ifft(imgridpad) * gcf, npixel=nx);
+        resultreal = create_image_from_array(result.real, im.wcs);
+        resultimag = create_image_from_array(result.imag, im.wcs);
         if normalize:
-            resultreal = normalize_sumwt(resultreal, sumwt)
-            resultimag = normalize_sumwt(resultimag, sumwt)
+            resultreal = normalize_sumwt(resultreal, sumwt);
+            resultimag = normalize_sumwt(resultimag, sumwt);
         return resultreal, sumwt, resultimag
+    
     else:
-        result = extract_mid(numpy.real(ifft(imgridpad)) * gcf, npixel=nx)
-        resultimage = create_image_from_array(result, im.wcs)
-        if normalize:
-            resultimage = normalize_sumwt(resultimage, sumwt)
-        return resultimage, sumwt
+        if gridwise == False:
+            result = extract_mid(numpy.real(ifft(imgridpad)) * gcf, npixel=nx);#Create image array
 
+            resultimage = create_image_from_array(result, im.wcs);
+            if normalize:
+                resultimage = normalize_sumwt(resultimage, sumwt);
+        
+            return resultimage, sumwt;
+        
+        else:            
+            result = extract_mid(numpy.real(ifft(imgridpad)) * gcf, npixel=nx);#Create image array
+            
+            uv_grid_vis = extract_mid(imgridpad, npixel=nx);#The gridpoint values on the uv plane            
+            
+            resultimage = create_image_from_array(result, im.wcs);
+            if normalize:
+                resultimage = normalize_sumwt(resultimage, sumwt);
 
-def invert_2d(vis: Visibility, im: Image, dopsf=False, normalize=True, **kwargs) -> (Image, numpy.ndarray):
+            return resultimage, sumwt, uv_grid_vis;
+
+def invert_2d(vis: Visibility, im: Image, dopsf=False, normalize=True, gridwise: bool = False, **kwargs) -> (Image, numpy.ndarray):
     """ Invert using prolate spheroidal gridding function
 
     Use the image im as a template. Do PSF in a separate call.
@@ -225,13 +240,43 @@ def invert_2d(vis: Visibility, im: Image, dopsf=False, normalize=True, **kwargs)
     :param im: image template (not changed)
     :param dopsf: Make the psf instead of the dirty image
     :param normalize: Normalize by the sum of weights (True)
-    :return: resulting image[nchan, npol, ny, nx], sum of weights[nchan, npol]
-
+    :param gridwise: If the invert method used gridwise if True yes else it uses the defaulr method (False)
+    :param return: resulting image[nchan, npol, ny, nx], sum of weights[nchan, npol]
     """
-    log.debug("invert_2d: inverting using 2d transform")
-    kwargs['kernel'] = get_parameter(kwargs, "kernel", '2d')
-    return invert_2d_base(vis, im, dopsf, normalize=normalize, **kwargs)
+    log.debug("invert_2d: inverting using 2d transform");
+    kwargs['kernel'] = get_parameter(kwargs, "kernel", '2d');
+        
+    return invert_2d_base(vis, im, dopsf, normalize=normalize, gridwise=gridwise, **kwargs);
 
+def invert_2d_from_grid(uv_grid_vis, sumwt, im: Image, normalize: bool = True, **kwargs):
+    """
+    Perform the 2d fourier transform on the gridded uv visibility
+    
+    :param uv_grid_vis: the gridded uv visibility
+    :param sumwt: the weight for the uv visibility
+    :param im: image template (not changed)
+    :param return: resulting image[nchan, npol, ny, nx], sum of weights[nchan, npol]
+    """
+    
+    ### Calculate gcf -> grid correction function ###
+    # 2D Prolate spheroidal angular function is separable
+    npixel = get_parameter(kwargs, "npixel", 512);
+    
+    nx = npixel;
+    ny = npixel; 
+        
+    nu = numpy.abs(2.0 * (numpy.arange(nx) - nx // 2) / nx);
+    gcf1d, _ = grdsf(nu);
+    gcf = numpy.outer(gcf1d, gcf1d);
+    gcf[gcf > 0.0] = gcf.max() / gcf[gcf > 0.0];
+    
+    result = numpy.real(ifft(uv_grid_vis))* gcf;#Create image array
+    
+    resultimage = create_image_from_array(result, im.wcs);
+    if normalize:
+        resultimage = normalize_sumwt(resultimage, sumwt);
+
+    return resultimage, sumwt;
 
 def predict_skycomponent_blockvisibility(vis: BlockVisibility,
                                          sc: Union[Skycomponent, List[Skycomponent]]) -> BlockVisibility:
