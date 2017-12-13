@@ -24,8 +24,8 @@ log = logging.getLogger(__name__)
 def vis_timeslice_iter(vis: Visibility, **kwargs) -> numpy.ndarray:
     """ W slice iterator
 
-    :param wstack: wstack (wavelengths)
-    :param vis_slices: Number of slices (second in precedence to wstack)
+    :param timeslice: timeslice (arcseconds ???)
+    :param vis_slices: Number of slices
     :return: Boolean array with selected rows=True
     """
     assert isinstance(vis, Visibility) or isinstance(vis, BlockVisibility)
@@ -37,8 +37,13 @@ def vis_timeslice_iter(vis: Visibility, **kwargs) -> numpy.ndarray:
         vis_slices = get_parameter(kwargs, "vis_slices", None)
         if vis_slices is None or vis_slices == 'auto':
             vis_slices = len(numpy.unique(vis.time))
-        boxes = numpy.linspace(timemin, timemax, vis_slices)
-        timeslice = (timemax - timemin) / vis_slices
+        
+        ### Change code to equaly slice the data ###
+        #boxes = numpy.linspace(timemin, timemax, vis_slices)
+        
+        half_box_width = (timemax -timemin) / (2 * vis_slices);
+        boxes = numpy.linspace(timemin + half_box_width, timemax - half_box_width, vis_slices);#Equal slicing as now linspace distribute points to the middle of boxes
+        timeslice = (timemax - timemin) / vis_slices;
     else:
         vis_slices = 1 + 2 * numpy.ceil((timemax - timemin) / timeslice).astype('int')
         boxes = numpy.linspace(timemin, timemax, vis_slices)
@@ -47,7 +52,6 @@ def vis_timeslice_iter(vis: Visibility, **kwargs) -> numpy.ndarray:
         else:
             timeslice = timemax - timemin
 
-    
     for box in boxes:
         rows = numpy.abs(vis.time - box) <= 0.5 * timeslice
         yield rows
