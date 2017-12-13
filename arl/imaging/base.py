@@ -63,7 +63,7 @@ def shift_vis_to_image(vis: Visibility, im: Image, tangent: bool = True, inverse
     # This is the only place in ARL where the relationship between the image and visibility
     # frames is defined.
     
-    image_phasecentre = pixel_to_skycoord(nx // 2, ny // 2, im.wcs, origin=1)
+    image_phasecentre = pixel_to_skycoord(nx // 2 + 1, ny // 2 + 1, im.wcs, origin=1)
     
     if vis.phasecentre.separation(image_phasecentre).rad > 1e-15:
         if inverse:
@@ -98,7 +98,8 @@ def normalize_sumwt(im: Image, sumwt) -> Image:
     return im
 
 
-def predict_2d_base(vis: Visibility, model: Image, **kwargs) -> Visibility:
+def predict_2d_base(vis: Union[BlockVisibility, Visibility], model: Image,
+                    **kwargs) -> Union[BlockVisibility, Visibility]:
     """ Predict using convolutional degridding.
 
     This is at the bottom of the layering i.e. all transforms are eventually expressed in terms of
@@ -108,10 +109,13 @@ def predict_2d_base(vis: Visibility, model: Image, **kwargs) -> Visibility:
     :param model: model image
     :return: resulting visibility (in place works)
     """
-    if not isinstance(vis, Visibility):
+    if isinstance(vis, BlockVisibility):
+        log.debug("imaging.predict: coalescing prior to prediction")
         avis = coalesce_visibility(vis, **kwargs)
     else:
         avis = vis
+        
+    assert isinstance(avis, Visibility), avis
     
     _, _, ny, nx = model.data.shape
     
@@ -131,7 +135,8 @@ def predict_2d_base(vis: Visibility, model: Image, **kwargs) -> Visibility:
     # Now we can shift the visibility from the image frame to the original visibility frame
     svis = shift_vis_to_image(avis, model, tangent=True, inverse=True)
 
-    if not isinstance(vis, Visibility):
+    if isinstance(vis, BlockVisibility) and isinstance(svis, Visibility):
+        log.debug("imaging.predict decoalescing post prediction")
         return decoalesce_visibility(svis)
     else:
         return svis
@@ -428,10 +433,15 @@ def create_image_from_visibility(vis, **kwargs) -> Image:
     w.wcs.cdelt = [-cellsize * 180.0 / numpy.pi, cellsize * 180.0 / numpy.pi, 1.0, channel_bandwidth.to(units.Hz).value]
     # The numpy definition of the phase centre of an FFT is n // 2 (0 - rel) so that's what we use for
     # the reference pixel. We have to use 0 rel everywhere.
-    w.wcs.crpix = [npixel // 2, npixel // 2, 1.0, 1.0]
+    w.wcs.crpix = [npixel // 2 + 1, npixel // 2 + 1, 1.0, 1.0]
     w.wcs.ctype = ["RA---SIN", "DEC--SIN", 'STOKES', 'FREQ']
     w.wcs.crval = [phasecentre.ra.deg, phasecentre.dec.deg, 1.0, reffrequency.to(units.Hz).value]
     w.naxis = 4
+    
+    direction_centre = pixel_to_skycoord(npixel // 2 + 1, npixel // 2 + 1, wcs=w, origin=1)
+    assert direction_centre.separation(imagecentre).value < 1e-15, \
+        "Image phase centre [npixel//2, npixel//2] should be %s, actually is %s" % \
+        (str(imagecentre), str(direction_centre))
     
     w.wcs.radesys = get_parameter(kwargs, 'frame', 'ICRS')
     w.wcs.equinox = get_parameter(kwargs, 'equinox', 2000.0)

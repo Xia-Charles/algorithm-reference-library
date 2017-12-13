@@ -83,7 +83,7 @@ class TestPipelineGraphs(unittest.TestCase):
             for ix in centers:
                 p = int(round(rpix[0] + ix * spacing_pixels * numpy.sign(model.wcs.wcs.cdelt[0]))), \
                     int(round(rpix[1] + iy * spacing_pixels * numpy.sign(model.wcs.wcs.cdelt[1])))
-                sc = pixel_to_skycoord(p[0], p[1], model.wcs, origin=0)
+                sc = pixel_to_skycoord(p[0], p[1], model.wcs, origin=1)
                 comps.append(create_skycomponent(flux=flux, frequency=vt.frequency, direction=sc,
                                                  polarisation_frame=PolarisationFrame("stokesI")))
         predict_skycomponent_blockvisibility(vt, comps)
