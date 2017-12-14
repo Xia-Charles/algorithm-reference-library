@@ -11,7 +11,9 @@ from astropy.coordinates import SkyCoord
 from arl.data.data_models import BlockVisibility, Visibility, QA
 from arl.imaging.params import get_frequency_map
 from arl.util.coordinate_support import skycoord_to_lmn, simulate_point
-from arl.visibility.base import copy_visibility
+from arl.visibility.base import copy_visibility;
+from arl.data.polarisation import PolarisationFrame;
+from arl.data.parameters import get_parameter;
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +38,38 @@ def append_visibility(vis: Union[Visibility, BlockVisibility], othervis: Union[V
     vis.data = numpy.hstack((vis.data, othervis.data))
     return vis
 
+def add_noise_to_visibility(vis, polarisation='stokesI', **kwargs):
+    """ Add noise to visibility from the 'standard normal' distribution, but optionally the distribution mu and sigma can be changed
+        The function should be modified for different polarization setupd (e.g stokesIQ)
+    
+    :param vis:
+    :param polarisation: the polarizations which the noise need to be added (currently works only for stokes polarization frame)
+    :return:
+    """
+    
+    sigma = get_parameter(kwargs, "sigma", None);#tuple of the sigma of the real and the imaginary part
+    if sigma is None:
+        sigma = (1,1);
+
+    mu = get_parameter(kwargs, "mu", None);#tuple of the mu of the real and the imaginary part
+    if mu is None:
+        mu = (0,0);
+    
+    num_of_visibilities = vis.data['vis'].shape[0];
+    
+    if polarisation == 'stokesI':
+        ### no need to check polarisation frame as it is working with stokesI and stokesIQUV as well ###
+        #assert vis.polarisation_frame == PolarisationFrame("stokesI");
+        vis.data['vis'][:,0] += numpy.vectorize(complex)(sigma[0] * numpy.random.randn(num_of_visibilities) + mu[0]
+                                                        ,sigma[1] * numpy.random.randn(num_of_visibilities) + mu[1]);
+
+    if polarisation == 'stokesIQUV':
+        assert vis.polarisation_frame == PolarisationFrame("stokesIQUV");
+        for i in range(0,4):
+            vis.data['vis'][:,i] += numpy.vectorize(complex)(sigma[0] * numpy.random.randn(num_of_visibilities) + mu[0]
+                                                            ,sigma[1] * numpy.random.randn(num_of_visibilities) + mu[1]);
+
+    return vis;
 
 def sort_visibility(vis, order=['index']):
     """ Sort a visibility on a given column
