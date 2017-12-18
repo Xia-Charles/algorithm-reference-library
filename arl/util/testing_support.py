@@ -114,7 +114,7 @@ def create_ASKAP_first_N_anetnna_configuration(N = 36,frame: str = 'local',diame
         lantxyz = antxyz - numpy.average(antxyz, axis=0);
         r = numpy.sqrt(lantxyz[:, 0] ** 2 + lantxyz[:, 1] ** 2 + lantxyz[:, 2] ** 2);
         antxyz = antxyz[r < rmax];
-        log.debug('create_VLAA_N_first_anetnna_configuration: Maximum radius %.1f m includes %d antennas/stations' %
+        log.debug('create_ASKAP_first_N_anetnna_configuration: Maximum radius %.1f m includes %d antennas' %
                   (rmax, antxyz.shape[0]));
      
     nants = antxyz.shape[0];
