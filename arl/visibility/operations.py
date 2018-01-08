@@ -56,7 +56,11 @@ def add_noise_to_visibility(vis, polarisation='stokesI', **kwargs):
         mu = (0,0);
     
     log.info("add_noise_to_visibility: Add noise to visibilities using the normal distribution (with mu=%.2f, %.2f sigma=%.2f, %.2f to RA and IM respectively)"
-+            %(mu[0],mu[1],sigma[0],sigma[1]));
+<<<<<<< HEAD
++             %(mu[0],mu[1],sigma[0],sigma[1]));
+=======
+            %(mu[0],mu[1],sigma[0],sigma[1]));
+>>>>>>> 9b71480ed8a28c0562bb9c5381eda9c66986e903
     
     num_of_visibilities = vis.data['vis'].shape[0];
     
