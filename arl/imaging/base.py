@@ -152,7 +152,7 @@ def predict_2d(vis: Visibility, im: Image, **kwargs) -> Visibility:
     log.debug("predict_2d: predict using 2d transform")
     return predict_2d_base(vis, im, **kwargs)
 
-def invert_2d_base(vis: Visibility, im: Image, dopsf: bool = False, normalize: bool = True, gridwise: bool = True, **kwargs) -> (Image, numpy.ndarray):
+def invert_2d_base(vis: Visibility, im: Image, dopsf: bool = False, normalize: bool = True, gridwise: bool = False, only_gridding: bool = False, **kwargs):
     """ Invert using 2D convolution function, including w projection optionally
 
     Use the image im as a template. Do PSF in a separate call.
@@ -164,6 +164,8 @@ def invert_2d_base(vis: Visibility, im: Image, dopsf: bool = False, normalize: b
     :param im: image template (not changed)
     :param dopsf: Make the psf instead of the dirty image
     :param normalize: Normalize by the sum of weights (True)
+    :param gridwise: If the invert method used gridwise if True yes else it uses the defaulr method (False)
+    :param only_gridding: If True the function does NOT do inversion, only returns the grid
     :return: resulting image
 
     """
@@ -201,6 +203,11 @@ def invert_2d_base(vis: Visibility, im: Image, dopsf: bool = False, normalize: b
     
     # Normalise weights for consistency with transform
     sumwt /= float(padding * int(round(padding * nx)) * ny);
+    
+    if only_gridding == True:
+        uv_grid_vis = extract_mid(imgridpad, npixel=nx);#The gridpoint values on the uv plane
+        
+        return uv_grid_vis;
     
     imaginary = get_parameter(kwargs, "imaginary", False);
     if imaginary:
@@ -252,6 +259,25 @@ def invert_2d(vis: Visibility, im: Image, dopsf=False, normalize=True, gridwise:
     kwargs['kernel'] = get_parameter(kwargs, "kernel", '2d');
         
     return invert_2d_base(vis, im, dopsf, normalize=normalize, gridwise=gridwise, **kwargs);
+
+def do_2d_grid_only(vis: Visibility, im: Image, dopsf=False, normalize=True, only_gridding: bool = True, **kwargs):
+    """ Do the gridding using prolate spheroidal gridding function
+
+    Use the image im as a template. Do PSF in a separate call.
+
+    Note that the image is not normalised but the sum of the weights. This is for ease of use in partitioning.
+
+    :param vis: Visibility to be inverted
+    :param im: image template (not changed)
+    :param dopsf: Make the psf instead of the dirty image
+    :param normalize: Normalize by the sum of weights (True)
+    :param return: grid
+    """
+    
+    log.debug("do_2d_grid_only: create grid only");
+    kwargs['kernel'] = get_parameter(kwargs, "kernel", '2d');
+        
+    return invert_2d_base(vis, im, dopsf, normalize=normalize, only_gridding=only_gridding, **kwargs);    
 
 def invert_2d_from_grid(uv_grid_vis, sumwt, im: Image, normalize: bool = True, **kwargs):
     """
